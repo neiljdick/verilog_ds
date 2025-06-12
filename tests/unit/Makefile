@@ -2,7 +2,7 @@
 # Orchestrates testing across all unit test subdirectories
 
 # Test subdirectories
-TEST_DIRS = hello_world btree_set
+TEST_DIRS = hello_world btree_set cuckoo_hash
 
 # Default target runs all unit tests
 .PHONY: all clean waves lint-sv $(TEST_DIRS)
