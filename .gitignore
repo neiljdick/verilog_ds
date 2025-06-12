@@ -33,8 +33,31 @@ env/
 sim_build/
 dump.vcd
 *.vcd
+*.fst
+*.ghw
 results.xml
 *.log
+*.wlf
+*.vstf
+*.wdb
+
+# SystemVerilog/Verilog simulation
+*.out
+*.exe
+*.daidir/
+csrc/
+simv*
+*.vpd
+*.fsdb
+*.shm/
+*.trn
+*.dsn
+*.env
+*.fdb
+*.jou
+*.pb
+*.str
+*.xvcd
 
 # IDEs
 .vscode/
