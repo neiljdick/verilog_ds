@@ -61,8 +61,8 @@ module btree_set #(
     logic [DATA_WIDTH-1:0] search_data, search_data_next;
     
     // Operation tracking
-    logic insert_found_collision;
-    logic search_found_match;
+    logic insert_found_collision, insert_found_collision_next;
+    logic search_found_match, search_found_match_next;
     logic write_enable;
     
     // Memory read data
@@ -94,6 +94,8 @@ module btree_set #(
             search_addr <= 0;
             target_data <= 0;
             search_data <= 0;
+            search_found_match <= 1'b0;
+            insert_found_collision <= 1'b0;
             
             // Initialize memory - all nodes invalid
             for (int i = 0; i < DEPTH; i++) begin
@@ -107,6 +109,8 @@ module btree_set #(
             search_addr <= search_addr_next;
             target_data <= target_data_next;
             search_data <= search_data_next;
+            search_found_match <= search_found_match_next;
+            insert_found_collision <= insert_found_collision_next;
             
             // Handle memory writes during insert
             if (write_enable) begin
@@ -121,7 +125,7 @@ module btree_set #(
         insert_state_next = insert_state;
         current_addr_next = current_addr;
         target_data_next = target_data;
-        insert_found_collision = 1'b0;
+        insert_found_collision_next = insert_found_collision; // Keep current value by default
         write_enable = 1'b0;
         
         case (insert_state)
@@ -130,6 +134,7 @@ module btree_set #(
                     insert_state_next = TRAVERSE;
                     current_addr_next = 0; // Start at root
                     target_data_next = data;
+                    insert_found_collision_next = 1'b0; // Clear collision flag at start
                 end
             end
             
@@ -138,9 +143,10 @@ module btree_set #(
                     // Found empty spot - insert here
                     write_enable = 1'b1;
                     insert_state_next = COMPLETE;
+                    // insert_found_collision_next remains 0
                 end else if (current_node.data == target_data) begin
                     // Found collision
-                    insert_found_collision = 1'b1;
+                    insert_found_collision_next = 1'b1;
                     insert_state_next = COMPLETE;
                 end else if (target_data < current_node.data) begin
                     // Go left
@@ -163,10 +169,12 @@ module btree_set #(
             
             COMPLETE: begin
                 insert_state_next = IDLE;
+                // Keep insert_found_collision value during COMPLETE state
             end
             
             default: begin
                 insert_state_next = IDLE;
+                insert_found_collision_next = 1'b0;
             end
         endcase
     end
@@ -176,7 +184,7 @@ module btree_set #(
         search_state_next = search_state;
         search_addr_next = search_addr;
         search_data_next = search_data;
-        search_found_match = 1'b0;
+        search_found_match_next = search_found_match; // Keep current value by default
         
         case (search_state)
             SEARCH_IDLE: begin
@@ -184,6 +192,7 @@ module btree_set #(
                     search_state_next = SEARCH_TRAVERSE;
                     search_addr_next = 0; // Start at root
                     search_data_next = data;
+                    search_found_match_next = 1'b0; // Clear found flag at start of new search
                 end
             end
             
@@ -191,9 +200,10 @@ module btree_set #(
                 if (!search_node.valid) begin
                     // Reached invalid node - not found
                     search_state_next = SEARCH_COMPLETE;
+                    // search_found_match_next remains 0
                 end else if (search_node.data == search_data) begin
                     // Found match
-                    search_found_match = 1'b1;
+                    search_found_match_next = 1'b1;
                     search_state_next = SEARCH_COMPLETE;
                 end else if (search_data < search_node.data) begin
                     // Go left
@@ -202,6 +212,7 @@ module btree_set #(
                     end else begin
                         // Can't go left - not found
                         search_state_next = SEARCH_COMPLETE;
+                        // search_found_match_next remains 0
                     end
                 end else begin
                     // Go right
@@ -210,16 +221,19 @@ module btree_set #(
                     end else begin
                         // Can't go right - not found
                         search_state_next = SEARCH_COMPLETE;
+                        // search_found_match_next remains 0
                     end
                 end
             end
             
             SEARCH_COMPLETE: begin
                 search_state_next = SEARCH_IDLE;
+                // Keep search_found_match value during COMPLETE state
             end
             
             default: begin
                 search_state_next = SEARCH_IDLE;
+                search_found_match_next = 1'b0;
             end
         endcase
     end
