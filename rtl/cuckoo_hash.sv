@@ -85,6 +85,14 @@ module cuckoo_hash #(
     logic [KEY_WIDTH-1:0] write_key, write_key_next;
     logic [VALUE_WIDTH-1:0] write_value, write_value_next;
     logic write_valid, write_valid_next;
+    logic write_delete, write_delete_next;  // Flag to indicate this is a delete operation
+    
+    // Eviction tracking
+    logic [KEY_WIDTH-1:0] evict_key, evict_key_next;
+    logic [VALUE_WIDTH-1:0] evict_value, evict_value_next;
+    logic [ADDR_WIDTH-1:0] evict_hash0, evict_hash0_next;
+    logic [ADDR_WIDTH-1:0] evict_hash1, evict_hash1_next;
+    logic evict_try_table1, evict_try_table1_next;  // Which table to try for evicted item
     
     // Operation tracking
     logic lookup_result, lookup_result_next;
@@ -103,6 +111,10 @@ module cuckoo_hash #(
     assign table0_data = table0[hash0_addr];
     assign table1_data = table1[hash1_addr];
     /* verilator lint_on UNUSEDSIGNAL */
+    
+    // Temporary variables for eviction logic
+    logic [KEY_WIDTH-1:0] next_evict_key;
+    logic [VALUE_WIDTH-1:0] next_evict_value;
     
     // Hash function implementations
     function automatic logic [ADDR_WIDTH-1:0] hash_func0(logic [KEY_WIDTH-1:0] key);
@@ -177,6 +189,12 @@ module cuckoo_hash #(
             write_key <= '0;
             write_value <= '0;
             write_valid <= 1'b0;
+            write_delete <= 1'b0;
+            evict_key <= '0;
+            evict_value <= '0;
+            evict_hash0 <= '0;
+            evict_hash1 <= '0;
+            evict_try_table1 <= 1'b0;
             
             // Initialize hash tables
             for (int i = 0; i < TABLE_SIZE; i++) begin
@@ -211,17 +229,39 @@ module cuckoo_hash #(
             write_key <= write_key_next;
             write_value <= write_value_next;
             write_valid <= write_valid_next;
+            write_delete <= write_delete_next;
+            evict_key <= evict_key_next;
+            evict_value <= evict_value_next;
+            evict_hash0 <= evict_hash0_next;
+            evict_hash1 <= evict_hash1_next;
+            evict_try_table1 <= evict_try_table1_next;
             
             // Memory write operations
             if (write_valid) begin
                 if (write_table0) begin
-                    table0[write_addr].valid <= 1'b1;
-                    table0[write_addr].key <= write_key;
-                    table0[write_addr].value <= write_value;
+                    if (write_delete) begin
+                        // Delete operation - clear valid bit
+                        table0[write_addr].valid <= 1'b0;
+                        table0[write_addr].key <= '0;
+                        table0[write_addr].value <= '0;
+                    end else begin
+                        // Insert operation - set valid bit and data
+                        table0[write_addr].valid <= 1'b1;
+                        table0[write_addr].key <= write_key;
+                        table0[write_addr].value <= write_value;
+                    end
                 end else if (write_table1) begin
-                    table1[write_addr].valid <= 1'b1;
-                    table1[write_addr].key <= write_key;
-                    table1[write_addr].value <= write_value;
+                    if (write_delete) begin
+                        // Delete operation - clear valid bit
+                        table1[write_addr].valid <= 1'b0;
+                        table1[write_addr].key <= '0;
+                        table1[write_addr].value <= '0;
+                    end else begin
+                        // Insert operation - set valid bit and data
+                        table1[write_addr].valid <= 1'b1;
+                        table1[write_addr].key <= write_key;
+                        table1[write_addr].value <= write_value;
+                    end
                 end
             end
         end
@@ -252,6 +292,14 @@ module cuckoo_hash #(
         write_key_next = write_key;
         write_value_next = write_value;
         write_valid_next = 1'b0;
+        write_delete_next = 1'b0;
+        evict_key_next = evict_key;
+        evict_value_next = evict_value;
+        evict_hash0_next = evict_hash0;
+        evict_hash1_next = evict_hash1;
+        evict_try_table1_next = evict_try_table1;
+        next_evict_key = '0;
+        next_evict_value = '0;
         
         case (current_state)
             IDLE: begin
@@ -346,7 +394,20 @@ module cuckoo_hash #(
                         insert_done_flag_next = 1'b1;
                         next_state = IDLE;
                     end else begin
-                        // Start eviction process
+                        // Start eviction process - evict from table0 first
+                        evict_key_next = table0_data.key;
+                        evict_value_next = table0_data.value;
+                        evict_hash0_next = hash_func0(table0_data.key);
+                        evict_hash1_next = hash_func1(table0_data.key);
+                        evict_try_table1_next = 1'b1;  // Try placing evicted item in table1
+                        
+                        // Place new item in table0
+                        write_table0_next = 1'b1;
+                        write_addr_next = hash0_addr;
+                        write_key_next = current_key;
+                        write_value_next = current_value;
+                        write_valid_next = 1'b1;
+                        
                         next_state = EVICT;
                         evict_count_next = evict_count + 1;
                     end
@@ -354,16 +415,134 @@ module cuckoo_hash #(
             end
             
             EVICT: begin
-                // TODO: Implement eviction chain logic
-                next_state = IDLE;
+                // Try to place the evicted item in its alternate location
+                if (evict_try_table1) begin
+                    // Check if table1 slot is available for evicted item
+                    if (!table1[evict_hash1].valid) begin
+                        // Success - place evicted item in table1
+                        write_table1_next = 1'b1;
+                        write_addr_next = evict_hash1;
+                        write_key_next = evict_key;
+                        write_value_next = evict_value;
+                        write_valid_next = 1'b1;
+                        
+                        insert_result_next = 1'b1;
+                        insert_done_flag_next = 1'b1;
+                        slot_count_next = slot_count + 1;
+                        next_state = IDLE;
+                    end else begin
+                        // Table1 slot occupied - need to evict again
+                        if (evict_count >= MAX_EVICTIONS) begin
+                            // Max evictions reached - overflow
+                            insert_result_next = 1'b0;
+                            insert_overflow_flag_next = 1'b1;
+                            insert_done_flag_next = 1'b1;
+                            next_state = IDLE;
+                        end else begin
+                            // Continue eviction chain
+                            next_evict_key = table1[evict_hash1].key;
+                            next_evict_value = table1[evict_hash1].value;
+                            
+                            // Place current evicted item in table1
+                            write_table1_next = 1'b1;
+                            write_addr_next = evict_hash1;
+                            write_key_next = evict_key;
+                            write_value_next = evict_value;
+                            write_valid_next = 1'b1;
+                            
+                            // Set up next eviction (newly evicted item tries table0)
+                            evict_key_next = next_evict_key;
+                            evict_value_next = next_evict_value;
+                            evict_hash0_next = hash_func0(next_evict_key);
+                            evict_hash1_next = hash_func1(next_evict_key);
+                            evict_try_table1_next = 1'b0;  // Try table0 next
+                            
+                            evict_count_next = evict_count + 1;
+                            // Stay in EVICT state
+                        end
+                    end
+                end else begin
+                    // Try to place evicted item in table0
+                    if (!table0[evict_hash0].valid) begin
+                        // Success - place evicted item in table0
+                        write_table0_next = 1'b1;
+                        write_addr_next = evict_hash0;
+                        write_key_next = evict_key;
+                        write_value_next = evict_value;
+                        write_valid_next = 1'b1;
+                        
+                        insert_result_next = 1'b1;
+                        insert_done_flag_next = 1'b1;
+                        slot_count_next = slot_count + 1;
+                        next_state = IDLE;
+                    end else begin
+                        // Table0 slot occupied - need to evict again
+                        if (evict_count >= MAX_EVICTIONS) begin
+                            // Max evictions reached - overflow
+                            insert_result_next = 1'b0;
+                            insert_overflow_flag_next = 1'b1;
+                            insert_done_flag_next = 1'b1;
+                            next_state = IDLE;
+                        end else begin
+                            // Continue eviction chain
+                            next_evict_key = table0[evict_hash0].key;
+                            next_evict_value = table0[evict_hash0].value;
+                            
+                            // Place current evicted item in table0
+                            write_table0_next = 1'b1;
+                            write_addr_next = evict_hash0;
+                            write_key_next = evict_key;
+                            write_value_next = evict_value;
+                            write_valid_next = 1'b1;
+                            
+                            // Set up next eviction (newly evicted item tries table1)
+                            evict_key_next = next_evict_key;
+                            evict_value_next = next_evict_value;
+                            evict_hash0_next = hash_func0(next_evict_key);
+                            evict_hash1_next = hash_func1(next_evict_key);
+                            evict_try_table1_next = 1'b1;  // Try table1 next
+                            
+                            evict_count_next = evict_count + 1;
+                            // Stay in EVICT state
+                        end
+                    end
+                end
             end
             
             DELETE: begin
-                // TODO: Implement delete logic
-                // Find and remove key from appropriate table
-                next_state = IDLE;
-                delete_result_next = 1'b0;  // Placeholder
-                delete_done_flag_next = 1'b1;  // Signal completion
+                // Check both hash tables for the key to delete
+                if (table0_data.valid && table0_data.key == current_key) begin
+                    // Found in table0 - mark as invalid
+                    write_table0_next = 1'b1;
+                    write_addr_next = hash0_addr;
+                    write_key_next = '0;  // Clear key (optional)
+                    write_value_next = '0;  // Clear value (optional)
+                    write_valid_next = 1'b1;
+                    write_delete_next = 1'b1;  // Indicate this is a delete operation
+                    
+                    delete_result_next = 1'b1;
+                    delete_done_flag_next = 1'b1;
+                    slot_count_next = slot_count - 1;
+                    next_state = IDLE;
+                end else if (table1_data.valid && table1_data.key == current_key) begin
+                    // Found in table1 - mark as invalid
+                    write_table1_next = 1'b1;
+                    write_addr_next = hash1_addr;
+                    write_key_next = '0;  // Clear key (optional)
+                    write_value_next = '0;  // Clear value (optional)
+                    write_valid_next = 1'b1;
+                    write_delete_next = 1'b1;  // Indicate this is a delete operation
+                    
+                    delete_result_next = 1'b1;
+                    delete_done_flag_next = 1'b1;
+                    slot_count_next = slot_count - 1;
+                    next_state = IDLE;
+                end else begin
+                    // Key not found in either table
+                    delete_result_next = 1'b0;
+                    delete_done_flag_next = 1'b1;
+                    next_state = IDLE;
+                end
             end
             
             default: begin
