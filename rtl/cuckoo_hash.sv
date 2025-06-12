@@ -81,10 +81,13 @@ module cuckoo_hash #(
     // Operation tracking
     logic lookup_result, lookup_result_next;
     logic [VALUE_WIDTH-1:0] lookup_data, lookup_data_next;
+    logic lookup_done_flag, lookup_done_flag_next;
     logic insert_result, insert_result_next;
     logic insert_collision_flag, insert_collision_flag_next;
     logic insert_overflow_flag, insert_overflow_flag_next;
+    logic insert_done_flag, insert_done_flag_next;
     logic delete_result, delete_result_next;
+    logic delete_done_flag, delete_done_flag_next;
     
     // Memory read data
     /* verilator lint_off UNUSEDSIGNAL */
@@ -153,10 +156,13 @@ module cuckoo_hash #(
             slot_count <= '0;
             lookup_result <= 1'b0;
             lookup_data <= '0;
+            lookup_done_flag <= 1'b0;
             insert_result <= 1'b0;
             insert_collision_flag <= 1'b0;
             insert_overflow_flag <= 1'b0;
+            insert_done_flag <= 1'b0;
             delete_result <= 1'b0;
+            delete_done_flag <= 1'b0;
             
             // Initialize hash tables
             for (int i = 0; i < TABLE_SIZE; i++) begin
@@ -178,10 +184,13 @@ module cuckoo_hash #(
             slot_count <= slot_count_next;
             lookup_result <= lookup_result_next;
             lookup_data <= lookup_data_next;
+            lookup_done_flag <= lookup_done_flag_next;
             insert_result <= insert_result_next;
             insert_collision_flag <= insert_collision_flag_next;
             insert_overflow_flag <= insert_overflow_flag_next;
+            insert_done_flag <= insert_done_flag_next;
             delete_result <= delete_result_next;
+            delete_done_flag <= delete_done_flag_next;
             
             // Memory write operations will be added here
             // TODO: Implement table updates for insert/delete operations
@@ -200,10 +209,13 @@ module cuckoo_hash #(
         slot_count_next = slot_count;
         lookup_result_next = lookup_result;
         lookup_data_next = lookup_data;
+        lookup_done_flag_next = 1'b0;  // Default: clear done flag
         insert_result_next = insert_result;
         insert_collision_flag_next = insert_collision_flag;
         insert_overflow_flag_next = insert_overflow_flag;
+        insert_done_flag_next = 1'b0;  // Default: clear done flag
         delete_result_next = delete_result;
+        delete_done_flag_next = 1'b0;  // Default: clear done flag
         
         case (current_state)
             IDLE: begin
@@ -240,6 +252,7 @@ module cuckoo_hash #(
                 // Check both hash tables for the key
                 next_state = IDLE;
                 lookup_result_next = 1'b0;  // Placeholder
+                lookup_done_flag_next = 1'b1;  // Signal completion
             end
             
             INSERT: begin
@@ -247,6 +260,7 @@ module cuckoo_hash #(
                 // Try to place in table0 or table1, evict if necessary
                 next_state = IDLE;
                 insert_result_next = 1'b0;  // Placeholder
+                insert_done_flag_next = 1'b1;  // Signal completion
             end
             
             EVICT: begin
@@ -259,6 +273,7 @@ module cuckoo_hash #(
                 // Find and remove key from appropriate table
                 next_state = IDLE;
                 delete_result_next = 1'b0;  // Placeholder
+                delete_done_flag_next = 1'b1;  // Signal completion
             end
             
             default: begin
@@ -299,14 +314,14 @@ module cuckoo_hash #(
     // Output assignments
     assign lookup_found = lookup_done && lookup_result;
     assign lookup_value = lookup_data;
-    assign lookup_done = (current_state == IDLE) && (next_state != LOOKUP);
+    assign lookup_done = lookup_done_flag;
     
-    assign insert_done = (current_state == IDLE) && (next_state != INSERT);
+    assign insert_done = insert_done_flag;
     assign insert_success = insert_done && insert_result;
     assign insert_collision = insert_done && insert_collision_flag;
     assign insert_overflow = insert_done && insert_overflow_flag;
     
-    assign delete_done = (current_state == IDLE) && (next_state != DELETE);
+    assign delete_done = delete_done_flag;
     assign delete_found = delete_done && delete_result;
     
     assign occupancy = slot_count;
