@@ -1,5 +1,6 @@
 // A 'set' implemented by a simple binary search tree backed by a contiguous
 // block ram. Supports insert and search operations.
+// Uses implicit binary heap indexing: left = 2*i+1, right = 2*i+2
 
 module btree_set #(
     parameter DATA_WIDTH = 32,
@@ -27,22 +28,20 @@ module btree_set #(
 );
 
     // Memory to store the binary tree nodes
-    // Each node contains: [valid][data][left_ptr][right_ptr]
+    // Each node contains: [valid][data]
+    // Invalid nodes are marked with valid=0
     typedef struct packed {
         logic valid;
         logic [DATA_WIDTH-1:0] data;
-        logic [ADDR_WIDTH-1:0] left_ptr;
-        logic [ADDR_WIDTH-1:0] right_ptr;
     } node_t;
     
     node_t ram [DEPTH-1:0];
     
     // State machine enumerations
-    typedef enum logic [2:0] {
-        IDLE = 3'b000,
-        INSERT_TRAVERSE = 3'b001,
-        INSERT_WRITE = 3'b010,
-        INSERT_COMPLETE = 3'b011
+    typedef enum logic [1:0] {
+        IDLE = 2'b00,
+        TRAVERSE = 2'b01,
+        COMPLETE = 2'b10
     } insert_state_t;
     
     typedef enum logic [1:0] {
@@ -58,31 +57,33 @@ module btree_set #(
     // Internal registers
     logic [ADDR_WIDTH-1:0] current_addr, current_addr_next;
     logic [ADDR_WIDTH-1:0] search_addr, search_addr_next;
-    logic [ADDR_WIDTH-1:0] free_addr, free_addr_next;
     logic [DATA_WIDTH-1:0] target_data, target_data_next;
     logic [DATA_WIDTH-1:0] search_data, search_data_next;
-    logic [ADDR_WIDTH-1:0] root_addr;
     
     // Operation tracking
     logic insert_found_collision;
     logic search_found_match;
+    logic write_enable;
     
     // Memory read data
     node_t current_node, search_node;
     assign current_node = ram[current_addr];
     assign search_node = ram[search_addr];
     
-    // Free address tracking (simple linear allocation)
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            free_addr <= 1; // Reserve address 0 for special cases
-        end else begin
-            free_addr <= free_addr_next;
-        end
-    end
+    // Helper functions for tree navigation
+    function automatic logic [ADDR_WIDTH-1:0] left_child(logic [ADDR_WIDTH-1:0] addr);
+        return (2 * addr + 1);
+    endfunction
     
-    // Root address is always 0 when tree is not empty
-    assign root_addr = 0;
+    function automatic logic [ADDR_WIDTH-1:0] right_child(logic [ADDR_WIDTH-1:0] addr);
+        return (2 * addr + 2);
+    endfunction
+    
+    function automatic logic addr_valid(logic [ADDR_WIDTH-1:0] addr);
+        /* verilator lint_off WIDTHEXPAND */
+        return (addr < DEPTH);
+        /* verilator lint_on WIDTHEXPAND */
+    endfunction
     
     // State machine sequential logic
     always_ff @(posedge clk or negedge rst_n) begin
@@ -94,9 +95,10 @@ module btree_set #(
             target_data <= 0;
             search_data <= 0;
             
-            // Initialize memory
+            // Initialize memory - all nodes invalid
             for (int i = 0; i < DEPTH; i++) begin
-                ram[i] <= '0;
+                ram[i].valid <= 1'b0;
+                ram[i].data <= '0;
             end
         end else begin
             insert_state <= insert_state_next;
@@ -107,27 +109,9 @@ module btree_set #(
             search_data <= search_data_next;
             
             // Handle memory writes during insert
-            if (insert_state == INSERT_WRITE) begin
-                if (!ram[root_addr].valid) begin
-                    // First node in tree
-                    ram[root_addr].valid <= 1'b1;
-                    ram[root_addr].data <= target_data;
-                    ram[root_addr].left_ptr <= '0;
-                    ram[root_addr].right_ptr <= '0;
-                end else begin
-                    // Add new node
-                    ram[free_addr].valid <= 1'b1;
-                    ram[free_addr].data <= target_data;
-                    ram[free_addr].left_ptr <= '0;
-                    ram[free_addr].right_ptr <= '0;
-                    
-                    // Update parent's pointer
-                    if (target_data < current_node.data) begin
-                        ram[current_addr].left_ptr <= free_addr;
-                    end else begin
-                        ram[current_addr].right_ptr <= free_addr;
-                    end
-                end
+            if (write_enable) begin
+                ram[current_addr].valid <= 1'b1;
+                ram[current_addr].data <= target_data;
             end
         end
     end
@@ -137,53 +121,47 @@ module btree_set #(
         insert_state_next = insert_state;
         current_addr_next = current_addr;
         target_data_next = target_data;
-        free_addr_next = free_addr;
         insert_found_collision = 1'b0;
+        write_enable = 1'b0;
         
         case (insert_state)
             IDLE: begin
                 if (insert) begin
-                    insert_state_next = INSERT_TRAVERSE;
-                    current_addr_next = root_addr;
+                    insert_state_next = TRAVERSE;
+                    current_addr_next = 0; // Start at root
                     target_data_next = data;
                 end
             end
             
-            INSERT_TRAVERSE: begin
+            TRAVERSE: begin
                 if (!current_node.valid) begin
-                    // Empty tree or reached empty spot
-                    insert_state_next = INSERT_WRITE;
+                    // Found empty spot - insert here
+                    write_enable = 1'b1;
+                    insert_state_next = COMPLETE;
                 end else if (current_node.data == target_data) begin
                     // Found collision
                     insert_found_collision = 1'b1;
-                    insert_state_next = INSERT_COMPLETE;
+                    insert_state_next = COMPLETE;
                 end else if (target_data < current_node.data) begin
                     // Go left
-                    if (current_node.left_ptr == 0) begin
-                        // Need to create new left child
-                        insert_state_next = INSERT_WRITE;
+                    if (addr_valid(left_child(current_addr))) begin
+                        current_addr_next = left_child(current_addr);
                     end else begin
-                        current_addr_next = current_node.left_ptr;
+                        // Tree capacity exceeded - can't go left
+                        insert_state_next = COMPLETE;
                     end
                 end else begin
                     // Go right
-                    if (current_node.right_ptr == 0) begin
-                        // Need to create new right child
-                        insert_state_next = INSERT_WRITE;
+                    if (addr_valid(right_child(current_addr))) begin
+                        current_addr_next = right_child(current_addr);
                     end else begin
-                        current_addr_next = current_node.right_ptr;
+                        // Tree capacity exceeded - can't go right
+                        insert_state_next = COMPLETE;
                     end
                 end
             end
             
-            INSERT_WRITE: begin
-                insert_state_next = INSERT_COMPLETE;
-                if (ram[root_addr].valid) begin
-                    free_addr_next = free_addr + 1;
-                end
-            end
-            
-            INSERT_COMPLETE: begin
+            COMPLETE: begin
                 insert_state_next = IDLE;
             end
             
@@ -204,28 +182,35 @@ module btree_set #(
             SEARCH_IDLE: begin
                 if (search) begin
                     search_state_next = SEARCH_TRAVERSE;
-                    search_addr_next = root_addr;
+                    search_addr_next = 0; // Start at root
                     search_data_next = data;
                 end
             end
             
             SEARCH_TRAVERSE: begin
                 if (!search_node.valid) begin
-                    // Empty tree or reached empty spot - not found
+                    // Reached invalid node - not found
                     search_state_next = SEARCH_COMPLETE;
                 end else if (search_node.data == search_data) begin
                     // Found match
                     search_found_match = 1'b1;
                     search_state_next = SEARCH_COMPLETE;
-                end else if (search_data < search_node.data && search_node.left_ptr != 0) begin
+                end else if (search_data < search_node.data) begin
                     // Go left
-                    search_addr_next = search_node.left_ptr;
-                end else if (search_data > search_node.data && search_node.right_ptr != 0) begin
-                    // Go right
-                    search_addr_next = search_node.right_ptr;
+                    if (addr_valid(left_child(search_addr))) begin
+                        search_addr_next = left_child(search_addr);
+                    end else begin
+                        // Can't go left - not found
+                        search_state_next = SEARCH_COMPLETE;
+                    end
                 end else begin
-                    // No more children and no match - not found
-                    search_state_next = SEARCH_COMPLETE;
+                    // Go right
+                    if (addr_valid(right_child(search_addr))) begin
+                        search_addr_next = right_child(search_addr);
+                    end else begin
+                        // Can't go right - not found
+                        search_state_next = SEARCH_COMPLETE;
+                    end
                 end
             end
             
@@ -240,7 +225,7 @@ module btree_set #(
     end
     
     // Output assignments
-    assign insert_done = (insert_state == INSERT_COMPLETE);
+    assign insert_done = (insert_state == COMPLETE);
     assign insert_collision = insert_done && insert_found_collision;
     assign search_done = (search_state == SEARCH_COMPLETE);
     assign found = search_done && search_found_match;
@@ -253,8 +238,12 @@ module btree_set #(
     else $error("Simultaneous insert and search operations not supported");
     
     assert property (@(posedge clk) disable iff (!rst_n)
-        free_addr < DEPTH)
-    else $error("Tree capacity exceeded");
+        current_addr < DEPTH)
+    else $error("Insert address out of bounds");
+    
+    assert property (@(posedge clk) disable iff (!rst_n)
+        search_addr < DEPTH)
+    else $error("Search address out of bounds");
     /* verilator lint_on WIDTHEXPAND */
     /* verilator lint_on SYNCASYNCNET */
 
