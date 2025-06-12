@@ -74,6 +74,9 @@ make test-unit
 # Run integration tests
 make test-integration
 
+# Lint SystemVerilog code
+make lint-sv
+
 # Open waveform viewer (requires gtkwave)
 make waves
 ```
@@ -84,6 +87,7 @@ make waves
 - `make setup` - Set up Python virtual environment
 - `make test` - Run all tests
 - `make test-unit` - Run unit tests only
+- `make lint-sv` - Lint SystemVerilog code with Verilator
 - `make waves` - Open waveform viewer
 - `make clean` - Clean build artifacts
 - `make lint` - Run Python linting

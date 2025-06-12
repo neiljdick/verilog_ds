@@ -26,7 +26,7 @@ EXTRA_ARGS += --assert
 include $(shell cocotb-config --makefiles)/Makefile.sim
 
 # Additional targets
-.PHONY: waves
+.PHONY: waves lint-sv
 
 waves:
 	@echo "Opening waveform viewer..."
@@ -35,3 +35,8 @@ waves:
 	else \
 		echo "gtkwave not found. Install with 'apt install gtkwave'"; \
 	fi
+
+lint-sv:
+	@echo "Linting SystemVerilog sources..."
+	@verilator --lint-only -Wall --timescale 1ns/1ps --assert $(VERILOG_SOURCES)
+	@echo "SystemVerilog linting complete!"

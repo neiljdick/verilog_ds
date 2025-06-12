@@ -29,8 +29,10 @@ module hello_world #(
     end
 
     // Simple assertion for basic functionality
+    /* verilator lint_off SYNCASYNCNET */
     assert property (@(posedge clk) disable iff (!rst_n)
         enable && (counter == (2**WIDTH - 1)) |=> (counter == 0))
     else $error("Counter overflow behavior incorrect");
+    /* verilator lint_on SYNCASYNCNET */
 
 endmodule

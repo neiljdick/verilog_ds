@@ -1,6 +1,6 @@
 # Top-level Makefile for SystemVerilog Data Structures project
 
-.PHONY: help setup test test-unit test-integration clean waves lint format
+.PHONY: help setup test test-unit test-integration clean waves lint lint-sv format
 
 help:
 	@echo "SystemVerilog Data Structures Test Environment"
@@ -13,6 +13,7 @@ help:
 	@echo "  waves          - Open waveform viewer (gtkwave)"
 	@echo "  clean          - Clean build artifacts"
 	@echo "  lint           - Run Python linting"
+	@echo "  lint-sv        - Run SystemVerilog linting with Verilator"
 	@echo "  format         - Format Python code"
 	@echo "  help           - Show this help message"
 
@@ -41,6 +42,9 @@ waves:
 lint:
 	@echo "Running Python linting..."
 	@. venv/bin/activate && flake8 tests/ --max-line-length=88
+
+lint-sv:
+	@./scripts/lint_sv.sh
 
 format:
 	@echo "Formatting Python code..."
