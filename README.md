@@ -6,11 +6,17 @@ A test environment for implementing and testing SystemVerilog data structures us
 
 ```
 ├── rtl/                    # SystemVerilog source files
-│   └── hello_world.sv      # Example counter module
+│   ├── hello_world.sv      # Example counter module
+│   └── btree_set.sv        # Binary tree set implementation
 ├── tests/
-│   ├── unit/              # Unit tests
-│   │   ├── Makefile       # Test-specific Makefile
-│   │   └── test_*.py      # cocotb test files
+│   ├── unit/              # Unit tests (organized by module)
+│   │   ├── Makefile       # Top-level unit test orchestrator
+│   │   ├── hello_world/   # Hello world module tests
+│   │   │   ├── Makefile   # Module-specific Makefile
+│   │   │   └── test_*.py  # cocotb test files
+│   │   └── btree_set/     # Binary tree set tests
+│   │       ├── Makefile   # Module-specific Makefile
+│   │       └── test_*.py  # cocotb test files
 │   └── integration/       # Integration tests
 ├── scripts/               # Utility scripts
 ├── docs/                  # Documentation
@@ -71,14 +77,24 @@ make test
 # Run only unit tests
 make test-unit
 
-# Run integration tests
-make test-integration
+# Run specific module tests
+cd tests/unit && make hello_world
+cd tests/unit && make btree_set
+
+# Run all unit tests from tests/unit
+cd tests/unit && make all
+
+# Module-specific test variants
+cd tests/unit/btree_set && make test-simple
+cd tests/unit/btree_set && make test-debug
 
 # Lint SystemVerilog code
 make lint-sv
+cd tests/unit && make lint-sv  # Lint all modules
 
 # Open waveform viewer (requires gtkwave)
 make waves
+cd tests/unit && make waves    # From any recent test
 ```
 
 ### Available Make Targets
