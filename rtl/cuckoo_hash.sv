@@ -78,6 +78,14 @@ module cuckoo_hash #(
     logic [$clog2(MAX_EVICTIONS+1)-1:0] evict_count, evict_count_next;
     logic [ADDR_WIDTH:0] slot_count, slot_count_next;
     
+    // Memory write control
+    logic write_table0, write_table0_next;
+    logic write_table1, write_table1_next;
+    logic [ADDR_WIDTH-1:0] write_addr, write_addr_next;
+    logic [KEY_WIDTH-1:0] write_key, write_key_next;
+    logic [VALUE_WIDTH-1:0] write_value, write_value_next;
+    logic write_valid, write_valid_next;
+    
     // Operation tracking
     logic lookup_result, lookup_result_next;
     logic [VALUE_WIDTH-1:0] lookup_data, lookup_data_next;
@@ -163,6 +171,12 @@ module cuckoo_hash #(
             insert_done_flag <= 1'b0;
             delete_result <= 1'b0;
             delete_done_flag <= 1'b0;
+            write_table0 <= 1'b0;
+            write_table1 <= 1'b0;
+            write_addr <= '0;
+            write_key <= '0;
+            write_value <= '0;
+            write_valid <= 1'b0;
             
             // Initialize hash tables
             for (int i = 0; i < TABLE_SIZE; i++) begin
@@ -191,9 +205,25 @@ module cuckoo_hash #(
             insert_done_flag <= insert_done_flag_next;
             delete_result <= delete_result_next;
             delete_done_flag <= delete_done_flag_next;
+            write_table0 <= write_table0_next;
+            write_table1 <= write_table1_next;
+            write_addr <= write_addr_next;
+            write_key <= write_key_next;
+            write_value <= write_value_next;
+            write_valid <= write_valid_next;
             
-            // Memory write operations will be added here
-            // TODO: Implement table updates for insert/delete operations
+            // Memory write operations
+            if (write_valid) begin
+                if (write_table0) begin
+                    table0[write_addr].valid <= 1'b1;
+                    table0[write_addr].key <= write_key;
+                    table0[write_addr].value <= write_value;
+                end else if (write_table1) begin
+                    table1[write_addr].valid <= 1'b1;
+                    table1[write_addr].key <= write_key;
+                    table1[write_addr].value <= write_value;
+                end
+            end
         end
     end
     
@@ -216,6 +246,12 @@ module cuckoo_hash #(
         insert_done_flag_next = 1'b0;  // Default: clear done flag
         delete_result_next = delete_result;
         delete_done_flag_next = 1'b0;  // Default: clear done flag
+        write_table0_next = 1'b0;
+        write_table1_next = 1'b0;
+        write_addr_next = write_addr;
+        write_key_next = write_key;
+        write_value_next = write_value;
+        write_valid_next = 1'b0;
         
         case (current_state)
             IDLE: begin
@@ -248,19 +284,73 @@ module cuckoo_hash #(
             end
             
             LOOKUP: begin
-                // TODO: Implement lookup logic
                 // Check both hash tables for the key
+                // Check table0 first
+                if (table0_data.valid && table0_data.key == current_key) begin
+                    // Found in table0
+                    lookup_result_next = 1'b1;
+                    lookup_data_next = table0_data.value;
+                end else if (table1_data.valid && table1_data.key == current_key) begin
+                    // Found in table1
+                    lookup_result_next = 1'b1;
+                    lookup_data_next = table1_data.value;
+                end else begin
+                    // Not found in either table
+                    lookup_result_next = 1'b0;
+                    lookup_data_next = '0;
+                end
+                
                 next_state = IDLE;
-                lookup_result_next = 1'b0;  // Placeholder
                 lookup_done_flag_next = 1'b1;  // Signal completion
             end
             
             INSERT: begin
-                // TODO: Implement insert logic
-                // Try to place in table0 or table1, evict if necessary
-                next_state = IDLE;
-                insert_result_next = 1'b0;  // Placeholder
-                insert_done_flag_next = 1'b1;  // Signal completion
+                // Check if key already exists (collision detection)
+                if ((table0_data.valid && table0_data.key == current_key) ||
+                    (table1_data.valid && table1_data.key == current_key)) begin
+                    // Key already exists - collision
+                    insert_result_next = 1'b0;
+                    insert_collision_flag_next = 1'b1;
+                    insert_done_flag_next = 1'b1;
+                    next_state = IDLE;
+                end else if (!table0_data.valid) begin
+                    // Slot in table0 is empty - insert here
+                    insert_result_next = 1'b1;
+                    insert_done_flag_next = 1'b1;
+                    slot_count_next = slot_count + 1;
+                    next_state = IDLE;
+                    // Set up memory write
+                    write_table0_next = 1'b1;
+                    write_addr_next = hash0_addr;
+                    write_key_next = current_key;
+                    write_value_next = current_value;
+                    write_valid_next = 1'b1;
+                end else if (!table1_data.valid) begin
+                    // Slot in table1 is empty - insert here
+                    insert_result_next = 1'b1;
+                    insert_done_flag_next = 1'b1;
+                    slot_count_next = slot_count + 1;
+                    next_state = IDLE;
+                    // Set up memory write
+                    write_table1_next = 1'b1;
+                    write_addr_next = hash1_addr;
+                    write_key_next = current_key;
+                    write_value_next = current_value;
+                    write_valid_next = 1'b1;
+                end else begin
+                    // Both slots occupied - need eviction
+                    if (evict_count >= MAX_EVICTIONS) begin
+                        // Max evictions exceeded - overflow
+                        insert_result_next = 1'b0;
+                        insert_overflow_flag_next = 1'b1;
+                        insert_done_flag_next = 1'b1;
+                        next_state = IDLE;
+                    end else begin
+                        // Start eviction process
+                        next_state = EVICT;
+                        evict_count_next = evict_count + 1;
+                    end
+                end
             end
             
             EVICT: begin
