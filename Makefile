@@ -30,7 +30,7 @@ test: test-unit
 
 test-unit:
 	@echo "Running unit tests..."
-	@. venv/bin/activate && $(MAKE) -C tests/unit
+	@. venv/bin/activate && $(MAKE) -C tests/unit all
 
 test-integration:
 	@echo "Running integration tests..."

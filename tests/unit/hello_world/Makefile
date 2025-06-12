@@ -1,20 +1,20 @@
-# Makefile for btree_set cocotb tests with Verilator
+# Makefile for hello_world cocotb tests with Verilator
 
 # Simulator
 SIM ?= verilator
 
 # Project directories
-RTL_DIR = ../../rtl
+RTL_DIR = ../../../rtl
 TEST_DIR = .
 
 # Python test module
-MODULE = test_btree_set
+MODULE = test_hello_world
 
 # Top level module
-TOPLEVEL = btree_set
+TOPLEVEL = hello_world
 
 # SystemVerilog source files
-VERILOG_SOURCES = $(RTL_DIR)/btree_set.sv
+VERILOG_SOURCES = $(RTL_DIR)/hello_world.sv
 
 # Verilator specific flags
 EXTRA_ARGS += --trace --trace-structs
