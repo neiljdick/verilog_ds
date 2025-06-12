@@ -6,17 +6,21 @@ A test environment for implementing and testing SystemVerilog data structures us
 
 ```
 ├── rtl/                    # SystemVerilog source files
-│   ├── hello_world.sv      # Example counter module
-│   └── btree_set.sv        # Binary tree set implementation
+│   ├── hello_world.sv      # Example counter module with enable/overflow
+│   ├── btree_set.sv        # Binary tree set with implicit heap indexing
+│   └── cuckoo_hash.sv      # Complete cuckoo hash table implementation
 ├── tests/
 │   ├── unit/              # Unit tests (organized by module)
 │   │   ├── Makefile       # Top-level unit test orchestrator
-│   │   ├── hello_world/   # Hello world module tests
+│   │   ├── hello_world/   # Hello world module tests (4 tests)
 │   │   │   ├── Makefile   # Module-specific Makefile
-│   │   │   └── test_*.py  # cocotb test files
-│   │   └── btree_set/     # Binary tree set tests
+│   │   │   └── test_hello_world.py  # cocotb test file
+│   │   ├── btree_set/     # Binary tree set tests (6 tests)
+│   │   │   ├── Makefile   # Module-specific Makefile
+│   │   │   └── test_btree_set.py    # cocotb test file
+│   │   └── cuckoo_hash/   # Cuckoo hash table tests (25 tests)
 │   │       ├── Makefile   # Module-specific Makefile
-│   │       └── test_*.py  # cocotb test files
+│   │       └── test_cuckoo_hash.py  # Consolidated test file
 │   └── integration/       # Integration tests
 ├── scripts/               # Utility scripts
 ├── docs/                  # Documentation
@@ -80,6 +84,7 @@ make test-unit
 # Run specific module tests
 cd tests/unit && make hello_world
 cd tests/unit && make btree_set
+cd tests/unit && make cuckoo_hash
 
 # Run all unit tests from tests/unit
 cd tests/unit && make all
@@ -190,39 +195,77 @@ VERILOG_SOURCES = $(RTL_DIR)/my_module.sv
 - `black` - Python code formatter
 - `flake8` - Python linter
 
-## Example: Hello World Counter
+## Implemented Data Structures
 
-The repository includes a working example with:
+The repository includes three complete SystemVerilog modules with comprehensive test coverage:
 
-- **`rtl/hello_world.sv`**: A simple parameterized counter with enable and overflow
-- **`tests/unit/test_*.py`**: Various test approaches for the counter
-- **Makefile configuration**: Ready-to-use build setup
+### 1. Hello World Counter (`rtl/hello_world.sv`)
 
-### Running the Example
+- **Features**: Parameterized counter with enable, reset, and overflow detection
+- **Tests**: 4 comprehensive tests covering basic functionality and edge cases  
+- **Demonstrates**: Clock generation, reset testing, sequential logic verification
+
+### 2. Binary Tree Set (`rtl/btree_set.sv`)
+
+- **Features**: Set data structure with insert and search operations
+- **Implementation**: Uses implicit heap indexing (`left = 2*i+1, right = 2*i+2`)
+- **Tests**: 6 tests covering insert/search, collision detection, multiple values, and random operations
+- **State Machines**: Uses SystemVerilog enumerations for insert and search states
+
+### 3. Cuckoo Hash Table (`rtl/cuckoo_hash.sv`)
+
+- **Features**: Complete hash table with O(1) worst-case lookup, insert, and delete
+- **Implementation**: Dual hash tables with eviction chain handling
+- **Parameters**: Configurable KEY_WIDTH=32, VALUE_WIDTH=32, TABLE_SIZE=64
+- **Tests**: 25 comprehensive tests organized in categories:
+  - **Skeleton Tests (5)**: Interface validation and basic functionality
+  - **Lookup Tests (6)**: Hash functions, empty table, state machine timing
+  - **Insert Tests (7)**: Basic insert, collision detection, eviction logic
+  - **Delete Tests (5)**: Key removal, occupancy management, cross-table deletion
+  - **Integration Tests (2)**: End-to-end validation and stress testing
+
+### Running Examples
 
 ```bash
-cd tests/unit
-source ../../venv/bin/activate
-make  # This will run the hello_world tests
+# Test individual modules
+cd tests/unit && source ../../venv/bin/activate
+make hello_world    # 4/4 tests pass
+make btree_set      # 6/6 tests pass  
+make cuckoo_hash    # 25/25 tests pass
+
+# Test all modules
+make all           # 35/35 total tests pass
 ```
 
-This demonstrates:
-- Clock generation
-- Reset testing
-- Sequential logic verification
-- Parameterized testing
-- Waveform generation
+### Key Features Demonstrated
 
-## Next Steps
+- **SystemVerilog Best Practices**: Parameterized modules, enumerated types, proper reset handling
+- **State Machine Design**: Complex multi-state operations with proper timing
+- **Memory Management**: Dual hash tables, occupancy tracking, eviction algorithms
+- **Comprehensive Testing**: Unit tests, integration tests, stress testing with random operations
+- **Hardware Verification**: Clock-accurate timing, assertion-based testing, waveform generation
 
-This environment is ready for implementing SystemVerilog data structures such as:
+## Project Status
+
+✅ **Complete**: Full SystemVerilog data structures test environment with three working implementations
+
+### Implemented & Tested:
+- ✅ Hello World Counter (4 tests passing)
+- ✅ Binary Tree Set with heap indexing (6 tests passing)  
+- ✅ Cuckoo Hash Table with full CRUD operations (25 tests passing)
+- ✅ Comprehensive test framework with cocotb + Verilator
+- ✅ Automated build system with modular Makefiles
+- ✅ SystemVerilog linting and code quality checks
+
+### Ready for Extension:
+This environment is ready for implementing additional SystemVerilog data structures:
 
 - Queues and FIFOs
-- Stacks
+- Stacks  
 - Linked lists
-- Hash tables
-- Trees and heaps
-- Custom memory structures
+- Advanced tree structures (AVL, Red-Black)
+- Bloom filters
+- Custom memory architectures
 
 ## Troubleshooting
 

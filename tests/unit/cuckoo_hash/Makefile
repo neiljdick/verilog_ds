@@ -7,8 +7,8 @@ SIM ?= verilator
 RTL_DIR = ../../../rtl
 TEST_DIR = .
 
-# Python test module (default to skeleton test)
-MODULE ?= test_cuckoo_hash_skeleton
+# Python test module (consolidated test file)
+MODULE ?= test_cuckoo_hash
 
 # Top level module
 TOPLEVEL = cuckoo_hash
@@ -26,11 +26,11 @@ EXTRA_ARGS += --assert
 include $(shell cocotb-config --makefiles)/Makefile.sim
 
 # Additional targets
-.PHONY: waves lint-sv test-skeleton
+.PHONY: waves lint-sv test-all
 
-test-skeleton:
-	@echo "Running skeleton cuckoo_hash tests..."
-	@$(MAKE) MODULE=test_cuckoo_hash_skeleton
+test-all:
+	@echo "Running consolidated cuckoo_hash tests..."
+	@$(MAKE) MODULE=test_cuckoo_hash
 
 waves:
 	@echo "Opening waveform viewer..."
