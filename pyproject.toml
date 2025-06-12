@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "verilog-ds"
+version = "0.1.0"
+description = "SystemVerilog Data Structures with cocotb testing"
+authors = [{name = "Developer"}]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "cocotb>=1.8.0",
+    "cocotb-test>=0.2.4",
+    "pytest>=7.0.0",
+    "pytest-xdist>=2.5.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "flake8",
+    "mypy",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.black]
+line-length = 88
+target-version = ['py38']

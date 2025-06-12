@@ -1,0 +1,9 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1749699258" />
+    <testcase name="test_hello_world_reset" classname="test_hello_world" file="/app/tests/unit/test_hello_world.py" lineno="7" time="0.0006997585296630859" sim_time_ns="20.001" ratio_time="28582.71696899489" />
+    <testcase name="test_hello_world_basic_counting" classname="test_hello_world" file="/app/tests/unit/test_hello_world.py" lineno="34" time="0.0011043548583984375" sim_time_ns="170.001" ratio_time="153936.93313989637" />
+    <testcase name="test_hello_world_async_reset" classname="test_hello_world" file="/app/tests/unit/test_hello_world.py" lineno="70" time="0.0007605552673339844" sim_time_ns="70.00099999999998" ratio_time="92039.33363761753" />
+    <testcase name="test_hello_world_enable_disable" classname="test_hello_world" file="/app/tests/unit/test_hello_world.py" lineno="103" time="0.0014338493347167969" sim_time_ns="220.00100000000003" ratio_time="153433.8334393083" />
+  </testsuite>
+</testsuites>
